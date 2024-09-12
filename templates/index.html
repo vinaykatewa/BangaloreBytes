@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Delivery RL App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <style>
+        #map { height: 400px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Food Delivery RL App</h1>
+    
+    <h2>Order Data</h2>
+    <table id="orderTable">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Order Latitude</th>
+                <th>Order Longitude</th>
+                <th>Restaurant Latitude</th>
+                <th>Restaurant Longitude</th>
+                <th>Timestamp</th>
+                <th>Order Size (kg)</th>
+                <th>Priority</th>
+                <th>Traffic</th>
+                <th>Weather</th>
+                <th>Time of Day</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <button onclick="addOrderRow()">Add Order</button>
+
+    <h2>Rider Data</h2>
+    <table id="riderTable">
+        <thead>
+            <tr>
+                <th>Rider ID</th>
+                <th>Rider Latitude</th>
+                <th>Rider Longitude</th>
+                <th>Availability</th>
+                <th>Capacity</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <button onclick="addRiderRow()">Add Rider</button>
+
+    <button onclick="processData()">Process Data</button>
+
+    <h2>Results</h2>
+    <div id="results"></div>
+
+    <div id="map"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script>
+        function addOrderRow() {
+            const table = document.getElementById('orderTable').getElementsByTagName('tbody')[0];
+            const row = table.insertRow();
+            for (let i = 0; i < 11; i++) {
+                const cell = row.insertCell();
+                const input = document.createElement('input');
+                input.type = 'text';
+                cell.appendChild(input);
+            }
+        }
+
+        function addRiderRow() {
+            const table = document.getElementById('riderTable').getElementsByTagName('tbody')[0];
+            const row = table.insertRow();
+            for (let i = 0; i < 5; i++) {
+                const cell = row.insertCell();
+                const input = document.createElement('input');
+                input.type = 'text';
+                cell.appendChild(input);
+            }
+        }
+
+        function getTableData(tableId) {
+            const table = document.getElementById(tableId);
+            const data = [];
+            for (let i = 1; i < table.rows.length; i++) {
+                const row = table.rows[i];
+                const rowData = {};
+                for (let j = 0; j < row.cells.length; j++) {
+                    const input = row.cells[j].getElementsByTagName('input')[0];
+                    rowData[table.rows[0].cells[j].innerText] = input.value;
+                }
+                data.push(rowData);
+            }
+            return data;
+        }
+
+        function processData() {
+            const orderData = getTableData('orderTable');
+            const riderData = getTableData('riderTable');
+
+            fetch('/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ orderData, riderData }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    displayError(data.error);
+                } else {
+                    displayResults(data);
+                }
+            })
+            .catch(error => displayError('An error occurred: ' + error));
+        }
+
+        function displayError(message) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `<p class="error">${message}</p>`;
+        }
+
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<p>No valid results found. Please check your input data.</p>';
+                return;
+            }
+
+            results.forEach(result => {
+                const resultHtml = `
+                    <h3>Order ${result.order_id}</h3>
+                    <p>Rider: ${result.rider_id}</p>
+                    <p>Total Distance: ${result.total_distance.toFixed(2)} meters</p>
+                    <p>Total Time: ${result.total_time.toFixed(2)} minutes</p>
+                    <p>Fuel Consumption: ${result.fuel_consumption.toFixed(2)} L</p>
+                    <p>Additional Orders: ${result.additional_orders.join(', ') || 'None'}</p>
+                `;
+                resultsDiv.innerHTML += resultHtml;
+            });
+
+            // Initialize the map
+            const map = L.map('map').setView([12.9716, 77.5946], 12); // Centered on Bangalore
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Add routes to the map
+            results.forEach(result => {
+                const polyline = L.polyline(result.route, {color: 'red'}).addTo(map);
+                map.fitBounds(polyline.getBounds());
+            });
+        }
+
+        // Add initial rows
+        addOrderRow();
+        addRiderRow();
+    </script>
+</body>
+</html>
